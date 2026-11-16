@@ -55,6 +55,23 @@ struct _CcDisplaySettings
   GtkWidget        *underscanning_switch;
   GtkWidget        *vrr_row;
   GtkWidget        *vrr_combo;
+  GtkWidget        *color_row;
+  GtkWidget        *color_range_combo;
+  GtkWidget        *color_advanced_button;
+  GtkWidget        *color_advanced_popover;
+  GtkWidget        *color_format_combo;
+  GtkWidget        *hdr_row;
+  GtkWidget        *hdr_combo;
+  GtkWidget        *hdr_advanced_button;
+  GtkWidget        *sdr_white_label;
+  GtkWidget        *sdr_white_box;
+  GtkWidget        *sdr_white_spin;
+  GtkWidget        *sdr_white_help;
+  GtkWidget        *hdr_peak_label;
+  GtkWidget        *hdr_peak_box;
+  GtkWidget        *hdr_peak_spin;
+  GtkWidget        *hdr_peak_help;
+  GtkWidget        *hdr_advanced_popover;
 
 };
 
@@ -219,6 +236,8 @@ sort_modes_by_area_desc (CcDisplayMode *a, CcDisplayMode *b)
   return res;
 }
 
+static void update_hdr_advanced (CcDisplaySettings *self);
+static void update_color (CcDisplaySettings *self);
 static void update_vrr (CcDisplaySettings *self);
 
 static gboolean
@@ -241,6 +260,8 @@ cc_display_settings_rebuild_ui (CcDisplaySettings *self)
       gtk_widget_set_sensitive (self->resolution_combo, FALSE);
       gtk_widget_set_sensitive (self->scale_row, FALSE);
       gtk_widget_set_sensitive (self->underscanning_row, FALSE);
+      gtk_widget_set_sensitive (self->hdr_row, FALSE);
+      gtk_widget_set_sensitive (self->color_row, FALSE);
       gtk_widget_set_sensitive (self->vrr_row, FALSE);
 
       return G_SOURCE_REMOVE;
@@ -478,7 +499,35 @@ cc_display_settings_rebuild_ui (CcDisplaySettings *self)
                          cc_display_monitor_get_underscanning (self->selected_output));
 
   self->updating = TRUE;
+  update_color (self);
   update_vrr (self);
+  self->updating = FALSE;
+
+  /* HDR, for monitors that can show it */
+  self->updating = TRUE;
+  gtk_combo_box_text_remove_all (GTK_COMBO_BOX_TEXT (self->hdr_combo));
+  if (cc_display_monitor_supports_hdr (self->selected_output, CC_DISPLAY_HDR_ON))
+    {
+      CcDisplayHdr hdr = cc_display_monitor_get_hdr (self->selected_output);
+
+      gtk_combo_box_text_append (GTK_COMBO_BOX_TEXT (self->hdr_combo), "off", _("Off"));
+      if (cc_display_monitor_supports_hdr (self->selected_output, CC_DISPLAY_HDR_AUTOMATIC))
+        gtk_combo_box_text_append (GTK_COMBO_BOX_TEXT (self->hdr_combo), "auto", _("Automatic"));
+      gtk_combo_box_text_append (GTK_COMBO_BOX_TEXT (self->hdr_combo), "on", _("On"));
+      gtk_combo_box_set_active_id (GTK_COMBO_BOX (self->hdr_combo),
+                                   hdr == CC_DISPLAY_HDR_ON ? "on" :
+                                   hdr == CC_DISPLAY_HDR_AUTOMATIC ? "auto" : "off");
+      gtk_widget_set_visible (self->hdr_row, TRUE);
+      update_hdr_advanced (self);
+    }
+  else
+    {
+      gtk_widget_set_visible (self->hdr_row, FALSE);
+    }
+  gtk_widget_set_sensitive (self->hdr_row, TRUE);
+  self->updating = FALSE;
+
+  self->updating = TRUE;
   g_object_thaw_notify ((GObject*) self->orientation_combo);
   g_object_thaw_notify ((GObject*) self->refresh_rate_combo);
   g_object_thaw_notify ((GObject*) self->resolution_combo);
@@ -613,6 +662,99 @@ on_underscanning_switch_active_changed_cb (GtkWidget         *widget,
   g_signal_emit_by_name (G_OBJECT (self), "updated", self->selected_output);
 }
 
+/* Color range and, under Advanced, color format: shown for monitors whose
+ * driver offers a choice in either (the NVIDIA driver has neither for
+ * DisplayPort). Muffin lists only the formats the monitor allows in its
+ * current mode. */
+static const struct
+{
+  guint value;
+  const gchar *id;
+  const gchar *name;
+} rgb_range_names[] = {
+  { CC_DISPLAY_RGB_RANGE_AUTO, "1", N_("Automatic") },
+  { CC_DISPLAY_RGB_RANGE_FULL, "2", N_("Full") },
+  { CC_DISPLAY_RGB_RANGE_LIMITED, "3", N_("Limited") },
+}, color_format_names[] = {
+  { CC_DISPLAY_COLOR_FORMAT_AUTO, "1", N_("Automatic") },
+  { CC_DISPLAY_COLOR_FORMAT_RGB, "2", N_("RGB") },
+  { CC_DISPLAY_COLOR_FORMAT_YCBCR444, "3", N_("YCbCr 4:4:4") },
+  { CC_DISPLAY_COLOR_FORMAT_YCBCR422, "4", N_("YCbCr 4:2:2") },
+  { CC_DISPLAY_COLOR_FORMAT_YCBCR420, "5", N_("YCbCr 4:2:0") },
+};
+
+static gboolean
+more_than_one (guint mask)
+{
+  return (mask & (mask - 1)) != 0;
+}
+
+static void
+fill_combo (GtkWidget *combo,
+            guint      supported,
+            guint      current,
+            gboolean   is_range)
+{
+  gsize i, n = is_range ? G_N_ELEMENTS (rgb_range_names) : G_N_ELEMENTS (color_format_names);
+
+  gtk_combo_box_text_remove_all (GTK_COMBO_BOX_TEXT (combo));
+  for (i = 0; i < n; i++)
+    {
+      guint value = is_range ? rgb_range_names[i].value : color_format_names[i].value;
+
+      if (supported & (1u << value))
+        gtk_combo_box_text_append (GTK_COMBO_BOX_TEXT (combo),
+                                   is_range ? rgb_range_names[i].id : color_format_names[i].id,
+                                   _(is_range ? rgb_range_names[i].name : color_format_names[i].name));
+    }
+
+  if (current >= 1 && current <= 9)
+    {
+      gchar id[2] = { '0' + current, '\0' };
+
+      gtk_combo_box_set_active_id (GTK_COMBO_BOX (combo), id);
+    }
+}
+
+static void
+update_color (CcDisplaySettings *self)
+{
+  CcDisplayMonitor *output = self->selected_output;
+  guint ranges, formats;
+
+  ranges = cc_display_monitor_get_supported_rgb_ranges (output);
+  formats = cc_display_monitor_get_supported_color_formats (output);
+
+  if (!more_than_one (ranges) && !more_than_one (formats))
+    {
+      gtk_widget_set_visible (self->color_row, FALSE);
+      return;
+    }
+
+  /* A driver with a color format but no color range (NVIDIA on HDMI)
+   * shows the range as automatic */
+  if (more_than_one (ranges))
+    {
+      fill_combo (self->color_range_combo, ranges,
+                  cc_display_monitor_get_rgb_range (output), TRUE);
+      gtk_widget_set_sensitive (self->color_range_combo, TRUE);
+    }
+  else
+    {
+      fill_combo (self->color_range_combo, 1u << CC_DISPLAY_RGB_RANGE_AUTO,
+                  CC_DISPLAY_RGB_RANGE_AUTO, TRUE);
+      gtk_widget_set_sensitive (self->color_range_combo, FALSE);
+    }
+
+  gtk_widget_set_visible (self->color_advanced_button, more_than_one (formats));
+  if (more_than_one (formats))
+    fill_combo (self->color_format_combo, formats,
+                cc_display_monitor_get_color_format (output), FALSE);
+
+  gtk_widget_set_visible (self->color_row, TRUE);
+  gtk_widget_set_sensitive (self->color_row, TRUE);
+}
+
 /* Variable refresh rate, for monitors that can vary it */
 static void
 update_vrr (CcDisplaySettings *self)
@@ -667,6 +809,307 @@ on_vrr_combo_changed_cb (GtkComboBox       *combo,
 
   cc_display_monitor_set_vrr_mode (self->selected_output,
                                    (guint) g_ascii_strtoull (id, NULL, 10));
+
+  g_signal_emit_by_name (G_OBJECT (self), "updated", self->selected_output);
+}
+
+static void
+on_color_range_combo_changed_cb (GtkComboBox       *combo,
+                                 CcDisplaySettings *self)
+{
+  const gchar *id;
+
+  if (self->updating || !self->selected_output)
+    return;
+
+  id = gtk_combo_box_get_active_id (combo);
+  if (id == NULL)
+    return;
+
+  cc_display_monitor_set_rgb_range (self->selected_output,
+                                    (guint) g_ascii_strtoull (id, NULL, 10));
+
+  g_signal_emit_by_name (G_OBJECT (self), "updated", self->selected_output);
+}
+
+static void
+on_color_advanced_ok_cb (GtkButton         *button,
+                         CcDisplaySettings *self)
+{
+  const gchar *id;
+
+  /* (Closing the menu resets it to the monitor's format: read it first) */
+  id = gtk_combo_box_get_active_id (GTK_COMBO_BOX (self->color_format_combo));
+  if (self->selected_output && id != NULL)
+    cc_display_monitor_set_color_format (self->selected_output,
+                                         (guint) g_ascii_strtoull (id, NULL, 10));
+
+  gtk_popover_popdown (GTK_POPOVER (self->color_advanced_popover));
+
+  if (!self->selected_output || id == NULL)
+    return;
+
+  g_signal_emit_by_name (G_OBJECT (self), "updated", self->selected_output);
+}
+
+static void
+on_color_advanced_cancel_cb (GtkButton         *button,
+                             CcDisplaySettings *self)
+{
+  gtk_popover_popdown (GTK_POPOVER (self->color_advanced_popover));
+}
+
+/* Each time the menu closes, it goes back to the monitor's format */
+static void
+on_color_advanced_closed_cb (GtkPopover        *popover,
+                             CcDisplaySettings *self)
+{
+  if (!self->selected_output)
+    return;
+
+  self->updating = TRUE;
+  update_color (self);
+  self->updating = FALSE;
+}
+
+static void
+setup_color_advanced (CcDisplaySettings *self)
+{
+  GtkWidget *popover, *grid, *label, *help, *buttons, *cancel, *ok;
+
+  grid = gtk_grid_new ();
+  g_object_set (grid, "margin", 12, NULL);
+  gtk_grid_set_row_spacing (GTK_GRID (grid), 6);
+  gtk_grid_set_column_spacing (GTK_GRID (grid), 12);
+
+  label = gtk_label_new (_("Color format"));
+  gtk_label_set_xalign (GTK_LABEL (label), 1.0);
+  gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);
+
+  self->color_format_combo = gtk_combo_box_text_new ();
+  gtk_widget_set_halign (self->color_format_combo, GTK_ALIGN_START);
+  gtk_grid_attach (GTK_GRID (grid), self->color_format_combo, 1, 0, 1, 1);
+
+  help = gtk_label_new (_("How the picture is encoded on the cable. RGB suits a desktop best. YCbCr 4:2:2 and 4:2:0 need less bandwidth, for high resolutions and refresh rates, but blur colored text. Only the formats this display accepts in its current mode are listed."));
+  gtk_label_set_line_wrap (GTK_LABEL (help), TRUE);
+  gtk_label_set_max_width_chars (GTK_LABEL (help), 48);
+  gtk_label_set_xalign (GTK_LABEL (help), 0.0);
+  gtk_style_context_add_class (gtk_widget_get_style_context (help), "dim-label");
+  gtk_grid_attach (GTK_GRID (grid), help, 1, 1, 1, 1);
+
+  buttons = gtk_button_box_new (GTK_ORIENTATION_HORIZONTAL);
+  gtk_button_box_set_layout (GTK_BUTTON_BOX (buttons), GTK_BUTTONBOX_END);
+  gtk_box_set_spacing (GTK_BOX (buttons), 6);
+  gtk_widget_set_margin_top (buttons, 6);
+  cancel = gtk_button_new_with_mnemonic (_("_Cancel"));
+  g_signal_connect (cancel, "clicked", G_CALLBACK (on_color_advanced_cancel_cb), self);
+  gtk_container_add (GTK_CONTAINER (buttons), cancel);
+  ok = gtk_button_new_with_mnemonic (_("_OK"));
+  gtk_style_context_add_class (gtk_widget_get_style_context (ok), "suggested-action");
+  g_signal_connect (ok, "clicked", G_CALLBACK (on_color_advanced_ok_cb), self);
+  gtk_container_add (GTK_CONTAINER (buttons), ok);
+  gtk_grid_attach (GTK_GRID (grid), buttons, 0, 2, 2, 1);
+
+  gtk_widget_show_all (grid);
+
+  popover = gtk_popover_new (self->color_advanced_button);
+  gtk_container_add (GTK_CONTAINER (popover), grid);
+  g_signal_connect (popover, "closed", G_CALLBACK (on_color_advanced_closed_cb), self);
+  gtk_menu_button_set_popover (GTK_MENU_BUTTON (self->color_advanced_button), popover);
+  self->color_advanced_popover = popover;
+}
+
+/* The advanced HDR settings: SDR content's brightness and the display's peak
+ * brightness while it shows HDR. They matter only in HDR, so the button is
+ * sensitive only when HDR isn't off. */
+static void
+update_hdr_advanced (CcDisplaySettings *self)
+{
+  CcDisplayMonitor *output = self->selected_output;
+  guint sdr_white, edid_peak;
+  gboolean has_peak;
+  g_autofree gchar *peak_help = NULL;
+
+  sdr_white = cc_display_monitor_get_sdr_white_level (output);
+  has_peak = cc_display_monitor_supports_hdr_peak (output);
+
+  gtk_widget_set_visible (self->hdr_advanced_button, sdr_white != 0 || has_peak);
+  gtk_widget_set_sensitive (self->hdr_advanced_button,
+                            cc_display_monitor_get_hdr (output) != CC_DISPLAY_HDR_OFF);
+
+  gtk_widget_set_visible (self->sdr_white_label, sdr_white != 0);
+  gtk_widget_set_visible (self->sdr_white_box, sdr_white != 0);
+  gtk_widget_set_visible (self->sdr_white_help, sdr_white != 0);
+  if (sdr_white != 0)
+    gtk_spin_button_set_value (GTK_SPIN_BUTTON (self->sdr_white_spin), sdr_white);
+
+  gtk_widget_set_visible (self->hdr_peak_label, has_peak);
+  gtk_widget_set_visible (self->hdr_peak_box, has_peak);
+  gtk_widget_set_visible (self->hdr_peak_help, has_peak);
+  if (has_peak)
+    {
+      gtk_spin_button_set_value (GTK_SPIN_BUTTON (self->hdr_peak_spin),
+                                 cc_display_monitor_get_hdr_peak (output));
+
+      edid_peak = cc_display_monitor_get_edid_hdr_peak (output);
+      if (edid_peak != 0)
+        peak_help = g_strdup_printf (_("The brightest the display gets in HDR. HDR games and videos are tone mapped to it, so their highlights keep their detail. 0 uses the %u cd/m² the display reports."),
+                                     edid_peak);
+      else
+        peak_help = g_strdup (_("The brightest the display gets in HDR. HDR games and videos are tone mapped to it, so their highlights keep their detail. 0 uses what the display reports; this display reports none, so HDR content isn't tone mapped. Look up its peak brightness."));
+      gtk_label_set_text (GTK_LABEL (self->hdr_peak_help), peak_help);
+    }
+}
+
+/* The menu edits its own copy of the values: OK gives them to the monitor
+ * (for Apply, as the other settings), Cancel or closing the menu drops them */
+static void
+on_hdr_advanced_ok_cb (GtkButton         *button,
+                       CcDisplaySettings *self)
+{
+  if (!self->selected_output)
+    return;
+
+  gtk_spin_button_update (GTK_SPIN_BUTTON (self->sdr_white_spin));
+  gtk_spin_button_update (GTK_SPIN_BUTTON (self->hdr_peak_spin));
+
+  if (cc_display_monitor_get_sdr_white_level (self->selected_output) != 0)
+    cc_display_monitor_set_sdr_white_level (self->selected_output,
+                                            gtk_spin_button_get_value_as_int (GTK_SPIN_BUTTON (self->sdr_white_spin)));
+  if (cc_display_monitor_supports_hdr_peak (self->selected_output))
+    cc_display_monitor_set_hdr_peak (self->selected_output,
+                                     gtk_spin_button_get_value_as_int (GTK_SPIN_BUTTON (self->hdr_peak_spin)));
+
+  gtk_popover_popdown (GTK_POPOVER (self->hdr_advanced_popover));
+
+  g_signal_emit_by_name (G_OBJECT (self), "updated", self->selected_output);
+}
+
+static void
+on_hdr_advanced_cancel_cb (GtkButton         *button,
+                           CcDisplaySettings *self)
+{
+  gtk_popover_popdown (GTK_POPOVER (self->hdr_advanced_popover));
+}
+
+/* Each time the menu closes, it goes back to the monitor's values */
+static void
+on_hdr_advanced_closed_cb (GtkPopover        *popover,
+                           CcDisplaySettings *self)
+{
+  if (self->selected_output)
+    update_hdr_advanced (self);
+}
+
+static GtkWidget *
+hdr_advanced_value (CcDisplaySettings *self,
+                    GtkWidget         *grid,
+                    gint               row,
+                    const gchar       *title,
+                    gdouble            min,
+                    gdouble            max,
+                    GtkWidget        **label_out,
+                    GtkWidget        **box_out,
+                    GtkWidget        **help_out)
+{
+  GtkWidget *label, *box, *spin, *unit, *help;
+
+  label = gtk_label_new (title);
+  gtk_label_set_xalign (GTK_LABEL (label), 1.0);
+  gtk_grid_attach (GTK_GRID (grid), label, 0, row, 1, 1);
+
+  box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
+  spin = gtk_spin_button_new_with_range (min, max, 10);
+  gtk_spin_button_set_digits (GTK_SPIN_BUTTON (spin), 0);
+  gtk_box_pack_start (GTK_BOX (box), spin, FALSE, FALSE, 0);
+  unit = gtk_label_new (_("cd/m²"));
+  gtk_box_pack_start (GTK_BOX (box), unit, FALSE, FALSE, 0);
+  gtk_grid_attach (GTK_GRID (grid), box, 1, row, 1, 1);
+
+  help = gtk_label_new (NULL);
+  gtk_label_set_line_wrap (GTK_LABEL (help), TRUE);
+  gtk_label_set_max_width_chars (GTK_LABEL (help), 48);
+  gtk_label_set_xalign (GTK_LABEL (help), 0.0);
+  gtk_style_context_add_class (gtk_widget_get_style_context (help), "dim-label");
+  gtk_grid_attach (GTK_GRID (grid), help, 1, row + 1, 1, 1);
+
+  gtk_widget_show_all (box);
+  *label_out = label;
+  *box_out = box;
+  *help_out = help;
+
+  return spin;
+}
+
+static void
+setup_hdr_advanced (CcDisplaySettings *self)
+{
+  GtkWidget *popover, *grid, *buttons, *cancel, *ok;
+
+  grid = gtk_grid_new ();
+  g_object_set (grid, "margin", 12, NULL);
+  gtk_grid_set_row_spacing (GTK_GRID (grid), 6);
+  gtk_grid_set_column_spacing (GTK_GRID (grid), 12);
+
+  self->sdr_white_spin = hdr_advanced_value (self, grid, 0, _("SDR brightness"),
+                                             80, 1000,
+                                             &self->sdr_white_label,
+                                             &self->sdr_white_box,
+                                             &self->sdr_white_help);
+  gtk_label_set_text (GTK_LABEL (self->sdr_white_help),
+                      _("How bright the desktop and other SDR content are in HDR, as the brightness of white. 203 cd/m² is the reference for HDR video; raise it if the desktop looks dim in HDR."));
+
+  self->hdr_peak_spin = hdr_advanced_value (self, grid, 2, _("Peak brightness"),
+                                            0, 10000,
+                                            &self->hdr_peak_label,
+                                            &self->hdr_peak_box,
+                                            &self->hdr_peak_help);
+
+  buttons = gtk_button_box_new (GTK_ORIENTATION_HORIZONTAL);
+  gtk_button_box_set_layout (GTK_BUTTON_BOX (buttons), GTK_BUTTONBOX_END);
+  gtk_box_set_spacing (GTK_BOX (buttons), 6);
+  gtk_widget_set_margin_top (buttons, 6);
+  cancel = gtk_button_new_with_mnemonic (_("_Cancel"));
+  g_signal_connect (cancel, "clicked", G_CALLBACK (on_hdr_advanced_cancel_cb), self);
+  gtk_container_add (GTK_CONTAINER (buttons), cancel);
+  ok = gtk_button_new_with_mnemonic (_("_OK"));
+  gtk_style_context_add_class (gtk_widget_get_style_context (ok), "suggested-action");
+  g_signal_connect (ok, "clicked", G_CALLBACK (on_hdr_advanced_ok_cb), self);
+  gtk_container_add (GTK_CONTAINER (buttons), ok);
+  gtk_grid_attach (GTK_GRID (grid), buttons, 0, 4, 2, 1);
+  gtk_widget_show_all (buttons);
+
+  popover = gtk_popover_new (self->hdr_advanced_button);
+  gtk_container_add (GTK_CONTAINER (popover), grid);
+  gtk_widget_show (grid);
+  g_signal_connect (popover, "closed", G_CALLBACK (on_hdr_advanced_closed_cb), self);
+  self->hdr_advanced_popover = popover;
+  gtk_menu_button_set_popover (GTK_MENU_BUTTON (self->hdr_advanced_button), popover);
+}
+
+static void
+on_hdr_combo_changed_cb (GtkComboBox       *combo,
+                         CcDisplaySettings *self)
+{
+  const gchar *id;
+  CcDisplayHdr hdr;
+
+  if (self->updating || !self->selected_output)
+    return;
+
+  id = gtk_combo_box_get_active_id (combo);
+  if (id == NULL)
+    return;
+
+  if (g_str_equal (id, "on"))
+    hdr = CC_DISPLAY_HDR_ON;
+  else if (g_str_equal (id, "auto"))
+    hdr = CC_DISPLAY_HDR_AUTOMATIC;
+  else
+    hdr = CC_DISPLAY_HDR_OFF;
+
+  cc_display_monitor_set_hdr (self->selected_output, hdr);
+  gtk_widget_set_sensitive (self->hdr_advanced_button, hdr != CC_DISPLAY_HDR_OFF);
 
   g_signal_emit_by_name (G_OBJECT (self), "updated", self->selected_output);
 }
@@ -800,12 +1243,22 @@ cc_display_settings_init (CcDisplaySettings *self)
   self->underscanning_switch = WID ("underscanning_switch");
   self->vrr_row = WID ("vrr_row");
   self->vrr_combo = WID ("vrr_combo");
+  self->color_row = WID ("color_row");
+  self->color_range_combo = WID ("color_range_combo");
+  self->color_advanced_button = WID ("color_advanced_button");
+  setup_color_advanced (self);
+  self->hdr_row = WID ("hdr_row");
+  self->hdr_combo = WID ("hdr_combo");
+  self->hdr_advanced_button = WID ("hdr_advanced_button");
+  setup_hdr_advanced (self);
 
   gtk_builder_add_callback_symbol (self->builder, "on_orientation_selection_changed_cb", G_CALLBACK (on_orientation_selection_changed_cb));
   gtk_builder_add_callback_symbol (self->builder, "on_refresh_rate_selection_changed_cb", G_CALLBACK (on_refresh_rate_selection_changed_cb));
   gtk_builder_add_callback_symbol (self->builder, "on_resolution_selection_changed_cb", G_CALLBACK (on_resolution_selection_changed_cb));
   gtk_builder_add_callback_symbol (self->builder, "on_scale_selection_changed_cb", G_CALLBACK (on_scale_selection_changed_cb));
   gtk_builder_add_callback_symbol (self->builder, "on_underscanning_switch_active_changed_cb", G_CALLBACK (on_underscanning_switch_active_changed_cb));
+  gtk_builder_add_callback_symbol (self->builder, "on_hdr_combo_changed_cb", G_CALLBACK (on_hdr_combo_changed_cb));
+  gtk_builder_add_callback_symbol (self->builder, "on_color_range_combo_changed_cb", G_CALLBACK (on_color_range_combo_changed_cb));
   gtk_builder_add_callback_symbol (self->builder, "on_vrr_combo_changed_cb", G_CALLBACK (on_vrr_combo_changed_cb));
 
   GtkCellRenderer *renderer;

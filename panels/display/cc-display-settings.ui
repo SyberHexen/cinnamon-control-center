@@ -191,6 +191,116 @@
       </packing>
     </child>
     <child>
+      <object class="GtkGrid" id="color_row">
+        <property name="visible">True</property>
+        <property name="no_show_all">True</property>
+        <property name="can_focus">False</property>
+        <property name="row_spacing">6</property>
+        <property name="column_spacing">12</property>
+        <child>
+          <object class="GtkLabel">
+            <property name="visible">True</property>
+            <property name="can_focus">False</property>
+            <property name="label" translatable="yes">Color range</property>
+            <property name="xalign">1</property>
+          </object>
+          <packing>
+            <property name="left_attach">0</property>
+            <property name="top_attach">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkComboBoxText" id="color_range_combo">
+            <property name="visible">True</property>
+            <property name="can_focus">False</property>
+            <property name="halign">end</property>
+            <property name="valign">center</property>
+            <property name="hexpand">True</property>
+            <property name="tooltip_text" translatable="yes">Full sends black to white as 0 to 255, as computer monitors expect; Limited sends 16 to 235, the video standard many TVs expect. If black looks grey and the picture washed out, choose Full; if dark details disappear, choose Limited.</property>
+            <signal name="changed" handler="on_color_range_combo_changed_cb" swapped="no"/>
+          </object>
+          <packing>
+            <property name="left_attach">1</property>
+            <property name="top_attach">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkMenuButton" id="color_advanced_button">
+            <property name="visible">True</property>
+            <property name="no_show_all">True</property>
+            <property name="can_focus">True</property>
+            <property name="valign">center</property>
+            <property name="label" translatable="yes">Advanced…</property>
+            <property name="tooltip_text" translatable="yes">Color format</property>
+          </object>
+          <packing>
+            <property name="left_attach">2</property>
+            <property name="top_attach">0</property>
+          </packing>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">3</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkGrid" id="hdr_row">
+        <property name="visible">True</property>
+        <property name="no_show_all">True</property>
+        <property name="can_focus">False</property>
+        <property name="row_spacing">6</property>
+        <property name="column_spacing">12</property>
+        <child>
+          <object class="GtkLabel">
+            <property name="visible">True</property>
+            <property name="can_focus">False</property>
+            <property name="label" translatable="yes">HDR</property>
+            <property name="xalign">1</property>
+          </object>
+          <packing>
+            <property name="left_attach">0</property>
+            <property name="top_attach">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkComboBoxText" id="hdr_combo">
+            <property name="visible">True</property>
+            <property name="can_focus">False</property>
+            <property name="halign">end</property>
+            <property name="valign">center</property>
+            <property name="hexpand">True</property>
+            <property name="tooltip_text" translatable="yes">Off: always SDR. Automatic: HDR while an application shows HDR content full screen. On: always HDR.</property>
+            <signal name="changed" handler="on_hdr_combo_changed_cb" swapped="no"/>
+          </object>
+          <packing>
+            <property name="left_attach">1</property>
+            <property name="top_attach">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkMenuButton" id="hdr_advanced_button">
+            <property name="visible">True</property>
+            <property name="no_show_all">True</property>
+            <property name="can_focus">True</property>
+            <property name="valign">center</property>
+            <property name="label" translatable="yes">Advanced…</property>
+            <property name="tooltip_text" translatable="yes">SDR and peak brightness in HDR</property>
+          </object>
+          <packing>
+            <property name="left_attach">2</property>
+            <property name="top_attach">0</property>
+          </packing>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">4</property>
+      </packing>
+    </child>
+    <child>
       <object class="GtkGrid" id="vrr_row">
         <property name="visible">True</property>
         <property name="no_show_all">True</property>
@@ -228,7 +338,7 @@
       <packing>
         <property name="expand">False</property>
         <property name="fill">True</property>
-        <property name="position">3</property>
+        <property name="position">5</property>
       </packing>
     </child>
   </object>

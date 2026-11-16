@@ -300,10 +300,35 @@ struct _CcDisplayMonitorDBus
   int height_mm;
   gboolean builtin;
   CcDisplayMonitorUnderscanning underscanning;
+
+  /* Muffin's color range and color format: values, and masks of (1 << v) */
+  guint32 supported_rgb_ranges;
+  guint32 rgb_range;
+  gboolean rgb_range_changed;
+  guint32 supported_color_formats;
+  guint32 color_format;
+  gboolean color_format_changed;
+
   /* Variable refresh rate: mode and mask of (1 << mode) */
   guint32 supported_vrr_modes;
   guint32 vrr_mode;
   gboolean vrr_mode_changed;
+
+  /* Muffin's color modes: 0 SDR, 1 HDR10 (BT.2100) */
+  guint32 supported_color_modes;
+  guint32 color_mode;
+  gboolean has_hdr_auto_switch;
+  gboolean hdr_auto_switch;
+  gboolean hdr_auto_switched;
+  CcDisplayHdr hdr;
+  gboolean hdr_changed;
+  guint32 sdr_white_level;
+  gboolean sdr_white_level_changed;
+  gboolean has_hdr_peak;
+  guint32 hdr_peak;
+  guint32 edid_hdr_peak;
+  gboolean hdr_peak_changed;
+
   int max_width;
   int max_height;
   int logical_index;
@@ -715,6 +740,94 @@ cc_display_monitor_dbus_set_scale (CcDisplayMonitor *pself,
     }
 }
 
+#define COLOR_MODE_SDR 0
+#define COLOR_MODE_HDR10 1
+
+static gboolean
+cc_display_monitor_dbus_supports_hdr (CcDisplayMonitor *pself,
+                                      CcDisplayHdr      hdr)
+{
+  CcDisplayMonitorDBus *self = CC_DISPLAY_MONITOR_DBUS (pself);
+
+  if (!(self->supported_color_modes & (1u << COLOR_MODE_HDR10)))
+    return FALSE;
+
+  return hdr != CC_DISPLAY_HDR_AUTOMATIC || self->has_hdr_auto_switch;
+}
+
+static CcDisplayHdr
+cc_display_monitor_dbus_get_hdr (CcDisplayMonitor *pself)
+{
+  CcDisplayMonitorDBus *self = CC_DISPLAY_MONITOR_DBUS (pself);
+
+  return self->hdr;
+}
+
+static void
+cc_display_monitor_dbus_set_hdr (CcDisplayMonitor *pself,
+                                 CcDisplayHdr      hdr)
+{
+  CcDisplayMonitorDBus *self = CC_DISPLAY_MONITOR_DBUS (pself);
+
+  if (!cc_display_monitor_dbus_supports_hdr (pself, hdr) || self->hdr == hdr)
+    return;
+
+  self->hdr = hdr;
+  self->hdr_changed = TRUE;
+}
+
+static guint
+cc_display_monitor_dbus_get_supported_rgb_ranges (CcDisplayMonitor *pself)
+{
+  return CC_DISPLAY_MONITOR_DBUS (pself)->supported_rgb_ranges;
+}
+
+static guint
+cc_display_monitor_dbus_get_rgb_range (CcDisplayMonitor *pself)
+{
+  return CC_DISPLAY_MONITOR_DBUS (pself)->rgb_range;
+}
+
+static void
+cc_display_monitor_dbus_set_rgb_range (CcDisplayMonitor *pself,
+                                       guint             range)
+{
+  CcDisplayMonitorDBus *self = CC_DISPLAY_MONITOR_DBUS (pself);
+
+  if (range >= 32 || !(self->supported_rgb_ranges & (1u << range)) ||
+      self->rgb_range == range)
+    return;
+
+  self->rgb_range = range;
+  self->rgb_range_changed = TRUE;
+}
+
+static guint
+cc_display_monitor_dbus_get_supported_color_formats (CcDisplayMonitor *pself)
+{
+  return CC_DISPLAY_MONITOR_DBUS (pself)->supported_color_formats;
+}
+
+static guint
+cc_display_monitor_dbus_get_color_format (CcDisplayMonitor *pself)
+{
+  return CC_DISPLAY_MONITOR_DBUS (pself)->color_format;
+}
+
+static void
+cc_display_monitor_dbus_set_color_format (CcDisplayMonitor *pself,
+                                          guint             format)
+{
+  CcDisplayMonitorDBus *self = CC_DISPLAY_MONITOR_DBUS (pself);
+
+  if (format >= 32 || !(self->supported_color_formats & (1u << format)) ||
+      self->color_format == format)
+    return;
+
+  self->color_format = format;
+  self->color_format_changed = TRUE;
+}
+
 static guint
 cc_display_monitor_dbus_get_supported_vrr_modes (CcDisplayMonitor *pself)
 {
@@ -739,6 +852,84 @@ cc_display_monitor_dbus_set_vrr_mode (CcDisplayMonitor *pself,
 
   self->vrr_mode = mode;
   self->vrr_mode_changed = TRUE;
+}
+
+/* Muffin's limits (meta-color-transform.h) */
+#define MIN_SDR_WHITE_LEVEL 80
+#define MAX_SDR_WHITE_LEVEL 1000
+#define MIN_HDR_PEAK 80
+#define MAX_HDR_PEAK 10000
+
+static guint
+cc_display_monitor_dbus_get_sdr_white_level (CcDisplayMonitor *pself)
+{
+  return CC_DISPLAY_MONITOR_DBUS (pself)->sdr_white_level;
+}
+
+static void
+cc_display_monitor_dbus_set_sdr_white_level (CcDisplayMonitor *pself,
+                                             guint             level)
+{
+  CcDisplayMonitorDBus *self = CC_DISPLAY_MONITOR_DBUS (pself);
+
+  if (self->sdr_white_level == 0)
+    return;
+
+  level = CLAMP (level, MIN_SDR_WHITE_LEVEL, MAX_SDR_WHITE_LEVEL);
+  if (self->sdr_white_level == level)
+    return;
+
+  self->sdr_white_level = level;
+  self->sdr_white_level_changed = TRUE;
+}
+
+static gboolean
+cc_display_monitor_dbus_supports_hdr_peak (CcDisplayMonitor *pself)
+{
+  return CC_DISPLAY_MONITOR_DBUS (pself)->has_hdr_peak;
+}
+
+static guint
+cc_display_monitor_dbus_get_hdr_peak (CcDisplayMonitor *pself)
+{
+  return CC_DISPLAY_MONITOR_DBUS (pself)->hdr_peak;
+}
+
+static guint
+cc_display_monitor_dbus_get_edid_hdr_peak (CcDisplayMonitor *pself)
+{
+  return CC_DISPLAY_MONITOR_DBUS (pself)->edid_hdr_peak;
+}
+
+static void
+cc_display_monitor_dbus_set_hdr_peak (CcDisplayMonitor *pself,
+                                      guint             peak)
+{
+  CcDisplayMonitorDBus *self = CC_DISPLAY_MONITOR_DBUS (pself);
+
+  if (!self->has_hdr_peak)
+    return;
+
+  /* 0 is the EDID's peak; anything else within Muffin's range */
+  if (peak != 0)
+    peak = CLAMP (peak, MIN_HDR_PEAK, MAX_HDR_PEAK);
+  if (self->hdr_peak == peak)
+    return;
+
+  self->hdr_peak = peak;
+  self->hdr_peak_changed = TRUE;
+}
+
+/* The HDR setting from Muffin's: HDR10 that Muffin switched to for HDR
+ * content (hdr-auto-switched) is the automatic setting, not HDR always */
+static CcDisplayHdr
+hdr_from_color_mode (CcDisplayMonitorDBus *self)
+{
+  if (self->color_mode == COLOR_MODE_HDR10 && !self->hdr_auto_switched)
+    return CC_DISPLAY_HDR_ON;
+  if (self->has_hdr_auto_switch && self->hdr_auto_switch)
+    return CC_DISPLAY_HDR_AUTOMATIC;
+  return CC_DISPLAY_HDR_OFF;
 }
 
 static void
@@ -800,9 +991,24 @@ cc_display_monitor_dbus_class_init (CcDisplayMonitorDBusClass *klass)
   parent_class->supports_underscanning = cc_display_monitor_dbus_supports_underscanning;
   parent_class->get_underscanning = cc_display_monitor_dbus_get_underscanning;
   parent_class->set_underscanning = cc_display_monitor_dbus_set_underscanning;
+  parent_class->supports_hdr = cc_display_monitor_dbus_supports_hdr;
+  parent_class->get_hdr = cc_display_monitor_dbus_get_hdr;
+  parent_class->set_hdr = cc_display_monitor_dbus_set_hdr;
+  parent_class->get_supported_rgb_ranges = cc_display_monitor_dbus_get_supported_rgb_ranges;
+  parent_class->get_rgb_range = cc_display_monitor_dbus_get_rgb_range;
+  parent_class->set_rgb_range = cc_display_monitor_dbus_set_rgb_range;
+  parent_class->get_supported_color_formats = cc_display_monitor_dbus_get_supported_color_formats;
+  parent_class->get_color_format = cc_display_monitor_dbus_get_color_format;
+  parent_class->set_color_format = cc_display_monitor_dbus_set_color_format;
   parent_class->get_supported_vrr_modes = cc_display_monitor_dbus_get_supported_vrr_modes;
   parent_class->get_vrr_mode = cc_display_monitor_dbus_get_vrr_mode;
   parent_class->set_vrr_mode = cc_display_monitor_dbus_set_vrr_mode;
+  parent_class->get_sdr_white_level = cc_display_monitor_dbus_get_sdr_white_level;
+  parent_class->set_sdr_white_level = cc_display_monitor_dbus_set_sdr_white_level;
+  parent_class->supports_hdr_peak = cc_display_monitor_dbus_supports_hdr_peak;
+  parent_class->get_hdr_peak = cc_display_monitor_dbus_get_hdr_peak;
+  parent_class->get_edid_hdr_peak = cc_display_monitor_dbus_get_edid_hdr_peak;
+  parent_class->set_hdr_peak = cc_display_monitor_dbus_set_hdr_peak;
   parent_class->set_mode = cc_display_monitor_dbus_set_mode;
   parent_class->set_position = cc_display_monitor_dbus_set_position;
   parent_class->get_scale = cc_display_monitor_dbus_get_scale;
@@ -893,6 +1099,76 @@ cc_display_monitor_dbus_new (GVariant *variant,
         {
           self->vrr_mode = g_variant_get_uint32 (v);
         }
+      else if ((g_str_equal (s, "supported-rgb-ranges") ||
+                g_str_equal (s, "supported-color-formats")) &&
+               g_variant_is_of_type (v, G_VARIANT_TYPE ("au")))
+        {
+          g_autoptr(GVariantIter) values = NULL;
+          guint32 value, mask = 0;
+
+          g_variant_get (v, "au", &values);
+          while (g_variant_iter_next (values, "u", &value))
+            if (value < 32)
+              mask |= 1u << value;
+
+          if (g_str_equal (s, "supported-rgb-ranges"))
+            self->supported_rgb_ranges = mask;
+          else
+            self->supported_color_formats = mask;
+        }
+      else if (g_str_equal (s, "rgb-range") &&
+               g_variant_is_of_type (v, G_VARIANT_TYPE_UINT32))
+        {
+          self->rgb_range = g_variant_get_uint32 (v);
+        }
+      else if (g_str_equal (s, "color-format") &&
+               g_variant_is_of_type (v, G_VARIANT_TYPE_UINT32))
+        {
+          self->color_format = g_variant_get_uint32 (v);
+        }
+      else if (g_str_equal (s, "supported-color-modes") &&
+               g_variant_is_of_type (v, G_VARIANT_TYPE ("au")))
+        {
+          g_autoptr(GVariantIter) modes = NULL;
+          guint32 mode;
+
+          g_variant_get (v, "au", &modes);
+          while (g_variant_iter_next (modes, "u", &mode))
+            if (mode < 32)
+              self->supported_color_modes |= 1u << mode;
+        }
+      else if (g_str_equal (s, "color-mode") &&
+               g_variant_is_of_type (v, G_VARIANT_TYPE_UINT32))
+        {
+          self->color_mode = g_variant_get_uint32 (v);
+        }
+      else if (g_str_equal (s, "hdr-auto-switch") &&
+               g_variant_is_of_type (v, G_VARIANT_TYPE_BOOLEAN))
+        {
+          self->has_hdr_auto_switch = TRUE;
+          self->hdr_auto_switch = g_variant_get_boolean (v);
+        }
+      else if (g_str_equal (s, "hdr-auto-switched") &&
+               g_variant_is_of_type (v, G_VARIANT_TYPE_BOOLEAN))
+        {
+          self->hdr_auto_switched = g_variant_get_boolean (v);
+        }
+      else if (g_str_equal (s, "sdr-white-level") &&
+               g_variant_is_of_type (v, G_VARIANT_TYPE_UINT32))
+        {
+          self->sdr_white_level = g_variant_get_uint32 (v);
+        }
+      else if (g_str_equal (s, "hdr-peak-luminance") &&
+               g_variant_is_of_type (v, G_VARIANT_TYPE_UINT32))
+        {
+          self->has_hdr_peak = TRUE;
+          self->hdr_peak = g_variant_get_uint32 (v);
+        }
+      else if (g_str_equal (s, "hdr-edid-peak-luminance") &&
+               g_variant_is_of_type (v, G_VARIANT_TYPE_UINT32))
+        {
+          self->edid_hdr_peak = g_variant_get_uint32 (v);
+        }
       else if (g_str_equal (s, "max-screen-size"))
         {
           g_variant_get (v, "ii", &self->max_width, &self->max_height);
@@ -906,6 +1182,8 @@ cc_display_monitor_dbus_new (GVariant *variant,
           g_variant_get (v, "s", &self->display_name);
         }
     }
+
+  self->hdr = hdr_from_color_mode (self);
 
   return self;
 }
@@ -992,10 +1270,40 @@ build_monitors_variant (GHashTable *monitors)
                              "underscanning",
                              g_variant_new_boolean (monitor->underscanning == UNDERSCANNING_ENABLED));
 
+      /* Only when it was changed: Muffin keeps what isn't sent, and an
+       * HDR10 mode it switched to for HDR content must not be stored */
+      if (monitor->hdr_changed)
+        {
+          g_variant_builder_add (&props_builder, "{sv}",
+                                 "color-mode",
+                                 g_variant_new_uint32 (monitor->hdr == CC_DISPLAY_HDR_ON ?
+                                                       COLOR_MODE_HDR10 : COLOR_MODE_SDR));
+          if (monitor->has_hdr_auto_switch)
+            g_variant_builder_add (&props_builder, "{sv}",
+                                   "hdr-auto-switch",
+                                   g_variant_new_boolean (monitor->hdr != CC_DISPLAY_HDR_OFF));
+        }
       if (monitor->vrr_mode_changed)
         g_variant_builder_add (&props_builder, "{sv}",
                                "vrr-mode",
                                g_variant_new_uint32 (monitor->vrr_mode));
+      if (monitor->rgb_range_changed)
+        g_variant_builder_add (&props_builder, "{sv}",
+                               "rgb-range",
+                               g_variant_new_uint32 (monitor->rgb_range));
+      if (monitor->color_format_changed)
+        g_variant_builder_add (&props_builder, "{sv}",
+                               "color-format",
+                               g_variant_new_uint32 (monitor->color_format));
+      if (monitor->sdr_white_level_changed)
+        g_variant_builder_add (&props_builder, "{sv}",
+                               "sdr-white-level",
+                               g_variant_new_uint32 (monitor->sdr_white_level));
+      if (monitor->hdr_peak_changed)
+        g_variant_builder_add (&props_builder, "{sv}",
+                               "hdr-peak-luminance",
+                               g_variant_new_uint32 (monitor->hdr_peak));
+
       mode_dbus = CC_DISPLAY_MODE_DBUS (monitor->current_mode);
       g_variant_builder_add (&builder, "(ss@*)",
                              monitor->connector_name,
@@ -1137,7 +1445,12 @@ cc_display_config_dbus_equal (CcDisplayConfig *pself,
       if (m1->underscanning != m2->underscanning)
         return FALSE;
 
-      if (m1->vrr_mode != m2->vrr_mode)
+      if (m1->vrr_mode != m2->vrr_mode ||
+          m1->rgb_range != m2->rgb_range ||
+          m1->color_format != m2->color_format ||
+          m1->hdr != m2->hdr ||
+          m1->sdr_white_level != m2->sdr_white_level ||
+          m1->hdr_peak != m2->hdr_peak)
         return FALSE;
 
       if (!cc_display_logical_monitor_equal (m1->logical_monitor, m2->logical_monitor))
