@@ -68,10 +68,32 @@ typedef enum _CcDisplayRotation
   CC_DISPLAY_ROTATION_270_FLIPPED,
 } CcDisplayRotation;
 
+/* The color range (KMS "Broadcast RGB") and color format (pixel encoding)
+ * sent to a monitor, with the values of Muffin's "rgb-range" and
+ * "color-format" monitor properties; 0 if the output has no such setting */
+#define CC_DISPLAY_RGB_RANGE_AUTO 1
+#define CC_DISPLAY_RGB_RANGE_FULL 2
+#define CC_DISPLAY_RGB_RANGE_LIMITED 3
+
+#define CC_DISPLAY_COLOR_FORMAT_AUTO 1
+#define CC_DISPLAY_COLOR_FORMAT_RGB 2
+#define CC_DISPLAY_COLOR_FORMAT_YCBCR444 3
+#define CC_DISPLAY_COLOR_FORMAT_YCBCR422 4
+#define CC_DISPLAY_COLOR_FORMAT_YCBCR420 5
+
 /* Variable refresh rate: Muffin's "vrr-mode" values */
 #define CC_DISPLAY_VRR_OFF 0
 #define CC_DISPLAY_VRR_AUTOMATIC 1
 #define CC_DISPLAY_VRR_ALWAYS 2
+
+/* What a monitor that can show HDR does: SDR only, HDR when an application
+ * shows HDR content full screen, or HDR always */
+typedef enum _CcDisplayHdr
+{
+  CC_DISPLAY_HDR_OFF,
+  CC_DISPLAY_HDR_AUTOMATIC,
+  CC_DISPLAY_HDR_ON,
+} CcDisplayHdr;
 
 
 #define CC_TYPE_DISPLAY_MODE (cc_display_mode_get_type ())
@@ -126,10 +148,31 @@ struct _CcDisplayMonitorClass
   gboolean          (*get_underscanning)      (CcDisplayMonitor  *self);
   void              (*set_underscanning)      (CcDisplayMonitor  *self,
                                                gboolean           u);
+  gboolean          (*supports_hdr)           (CcDisplayMonitor  *self,
+                                               CcDisplayHdr       hdr);
+  CcDisplayHdr      (*get_hdr)                (CcDisplayMonitor  *self);
+  void              (*set_hdr)                (CcDisplayMonitor  *self,
+                                               CcDisplayHdr       hdr);
+  guint             (*get_supported_rgb_ranges) (CcDisplayMonitor *self);
+  guint             (*get_rgb_range)          (CcDisplayMonitor  *self);
+  void              (*set_rgb_range)          (CcDisplayMonitor  *self,
+                                               guint              range);
+  guint             (*get_supported_color_formats) (CcDisplayMonitor *self);
+  guint             (*get_color_format)       (CcDisplayMonitor  *self);
+  void              (*set_color_format)       (CcDisplayMonitor  *self,
+                                               guint              format);
   guint             (*get_supported_vrr_modes) (CcDisplayMonitor *self);
   guint             (*get_vrr_mode)           (CcDisplayMonitor  *self);
   void              (*set_vrr_mode)           (CcDisplayMonitor  *self,
                                                guint              mode);
+  guint             (*get_sdr_white_level)    (CcDisplayMonitor  *self);
+  void              (*set_sdr_white_level)    (CcDisplayMonitor  *self,
+                                               guint              level);
+  gboolean          (*supports_hdr_peak)      (CcDisplayMonitor  *self);
+  guint             (*get_hdr_peak)           (CcDisplayMonitor  *self);
+  guint             (*get_edid_hdr_peak)      (CcDisplayMonitor  *self);
+  void              (*set_hdr_peak)           (CcDisplayMonitor  *self,
+                                               guint              peak);
   CcDisplayMode*    (*get_mode)               (CcDisplayMonitor  *self);
   CcDisplayMode*    (*get_preferred_mode)     (CcDisplayMonitor  *self);
   GList*            (*get_modes)              (CcDisplayMonitor  *self);
@@ -227,11 +270,38 @@ gboolean          cc_display_monitor_get_underscanning      (CcDisplayMonitor  *
 void              cc_display_monitor_set_underscanning      (CcDisplayMonitor  *monitor,
                                                              gboolean           underscanning);
 
+gboolean          cc_display_monitor_supports_hdr           (CcDisplayMonitor  *monitor,
+                                                             CcDisplayHdr       hdr);
+CcDisplayHdr      cc_display_monitor_get_hdr                (CcDisplayMonitor  *monitor);
+void              cc_display_monitor_set_hdr                (CcDisplayMonitor  *monitor,
+                                                             CcDisplayHdr       hdr);
+/* Bit masks of (1 << value) */
+guint             cc_display_monitor_get_supported_rgb_ranges (CcDisplayMonitor *monitor);
+guint             cc_display_monitor_get_rgb_range          (CcDisplayMonitor  *monitor);
+void              cc_display_monitor_set_rgb_range          (CcDisplayMonitor  *monitor,
+                                                             guint              range);
+/* Only the formats the monitor allows in its current mode */
+guint             cc_display_monitor_get_supported_color_formats (CcDisplayMonitor *monitor);
+guint             cc_display_monitor_get_color_format       (CcDisplayMonitor  *monitor);
+void              cc_display_monitor_set_color_format       (CcDisplayMonitor  *monitor,
+                                                             guint              format);
+
 /* Bit mask of (1 << mode); 0 if the monitor can't vary its refresh rate */
 guint             cc_display_monitor_get_supported_vrr_modes (CcDisplayMonitor *monitor);
 guint             cc_display_monitor_get_vrr_mode           (CcDisplayMonitor  *monitor);
 void              cc_display_monitor_set_vrr_mode           (CcDisplayMonitor  *monitor,
                                                              guint              mode);
+
+/* SDR content's white in HDR, in cd/m²; 0 if the compositor has no setting */
+guint             cc_display_monitor_get_sdr_white_level    (CcDisplayMonitor  *monitor);
+void              cc_display_monitor_set_sdr_white_level    (CcDisplayMonitor  *monitor,
+                                                             guint              level);
+/* The display's HDR peak luminance in cd/m²; 0 uses its EDID's */
+gboolean          cc_display_monitor_supports_hdr_peak      (CcDisplayMonitor  *monitor);
+guint             cc_display_monitor_get_hdr_peak           (CcDisplayMonitor  *monitor);
+guint             cc_display_monitor_get_edid_hdr_peak      (CcDisplayMonitor  *monitor);
+void              cc_display_monitor_set_hdr_peak           (CcDisplayMonitor  *monitor,
+                                                             guint              peak);
 
 CcDisplayMode*    cc_display_monitor_get_mode               (CcDisplayMonitor  *monitor);
 void              cc_display_monitor_get_geometry           (CcDisplayMonitor  *monitor,
