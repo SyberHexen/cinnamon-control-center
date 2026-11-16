@@ -355,6 +355,102 @@ cc_display_monitor_set_underscanning (CcDisplayMonitor *self,
   return CC_DISPLAY_MONITOR_GET_CLASS (self)->set_underscanning (self, underscanning);
 }
 
+gboolean
+cc_display_monitor_supports_hdr (CcDisplayMonitor *self,
+                                 CcDisplayHdr      hdr)
+{
+  return CC_DISPLAY_MONITOR_GET_CLASS (self)->supports_hdr (self, hdr);
+}
+
+CcDisplayHdr
+cc_display_monitor_get_hdr (CcDisplayMonitor *self)
+{
+  return CC_DISPLAY_MONITOR_GET_CLASS (self)->get_hdr (self);
+}
+
+void
+cc_display_monitor_set_hdr (CcDisplayMonitor *self,
+                            CcDisplayHdr      hdr)
+{
+  CC_DISPLAY_MONITOR_GET_CLASS (self)->set_hdr (self, hdr);
+}
+
+guint
+cc_display_monitor_get_supported_rgb_ranges (CcDisplayMonitor *self)
+{
+  return CC_DISPLAY_MONITOR_GET_CLASS (self)->get_supported_rgb_ranges (self);
+}
+
+guint
+cc_display_monitor_get_rgb_range (CcDisplayMonitor *self)
+{
+  return CC_DISPLAY_MONITOR_GET_CLASS (self)->get_rgb_range (self);
+}
+
+void
+cc_display_monitor_set_rgb_range (CcDisplayMonitor *self,
+                                  guint             range)
+{
+  CC_DISPLAY_MONITOR_GET_CLASS (self)->set_rgb_range (self, range);
+}
+
+guint
+cc_display_monitor_get_supported_color_formats (CcDisplayMonitor *self)
+{
+  return CC_DISPLAY_MONITOR_GET_CLASS (self)->get_supported_color_formats (self);
+}
+
+guint
+cc_display_monitor_get_color_format (CcDisplayMonitor *self)
+{
+  return CC_DISPLAY_MONITOR_GET_CLASS (self)->get_color_format (self);
+}
+
+void
+cc_display_monitor_set_color_format (CcDisplayMonitor *self,
+                                     guint             format)
+{
+  CC_DISPLAY_MONITOR_GET_CLASS (self)->set_color_format (self, format);
+}
+
+guint
+cc_display_monitor_get_sdr_white_level (CcDisplayMonitor *self)
+{
+  return CC_DISPLAY_MONITOR_GET_CLASS (self)->get_sdr_white_level (self);
+}
+
+void
+cc_display_monitor_set_sdr_white_level (CcDisplayMonitor *self,
+                                        guint             level)
+{
+  CC_DISPLAY_MONITOR_GET_CLASS (self)->set_sdr_white_level (self, level);
+}
+
+gboolean
+cc_display_monitor_supports_hdr_peak (CcDisplayMonitor *self)
+{
+  return CC_DISPLAY_MONITOR_GET_CLASS (self)->supports_hdr_peak (self);
+}
+
+guint
+cc_display_monitor_get_hdr_peak (CcDisplayMonitor *self)
+{
+  return CC_DISPLAY_MONITOR_GET_CLASS (self)->get_hdr_peak (self);
+}
+
+guint
+cc_display_monitor_get_edid_hdr_peak (CcDisplayMonitor *self)
+{
+  return CC_DISPLAY_MONITOR_GET_CLASS (self)->get_edid_hdr_peak (self);
+}
+
+void
+cc_display_monitor_set_hdr_peak (CcDisplayMonitor *self,
+                                 guint             peak)
+{
+  CC_DISPLAY_MONITOR_GET_CLASS (self)->set_hdr_peak (self, peak);
+}
+
 void
 cc_display_monitor_set_mode (CcDisplayMonitor *self, CcDisplayMode *m)
 {
