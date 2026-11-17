@@ -68,6 +68,11 @@ typedef enum _CcDisplayRotation
   CC_DISPLAY_ROTATION_270_FLIPPED,
 } CcDisplayRotation;
 
+/* Variable refresh rate: Muffin's "vrr-mode" values */
+#define CC_DISPLAY_VRR_OFF 0
+#define CC_DISPLAY_VRR_AUTOMATIC 1
+#define CC_DISPLAY_VRR_ALWAYS 2
+
 
 #define CC_TYPE_DISPLAY_MODE (cc_display_mode_get_type ())
 G_DECLARE_DERIVABLE_TYPE (CcDisplayMode, cc_display_mode,
@@ -121,6 +126,10 @@ struct _CcDisplayMonitorClass
   gboolean          (*get_underscanning)      (CcDisplayMonitor  *self);
   void              (*set_underscanning)      (CcDisplayMonitor  *self,
                                                gboolean           u);
+  guint             (*get_supported_vrr_modes) (CcDisplayMonitor *self);
+  guint             (*get_vrr_mode)           (CcDisplayMonitor  *self);
+  void              (*set_vrr_mode)           (CcDisplayMonitor  *self,
+                                               guint              mode);
   CcDisplayMode*    (*get_mode)               (CcDisplayMonitor  *self);
   CcDisplayMode*    (*get_preferred_mode)     (CcDisplayMonitor  *self);
   GList*            (*get_modes)              (CcDisplayMonitor  *self);
@@ -217,6 +226,12 @@ gboolean          cc_display_monitor_supports_underscanning (CcDisplayMonitor  *
 gboolean          cc_display_monitor_get_underscanning      (CcDisplayMonitor  *monitor);
 void              cc_display_monitor_set_underscanning      (CcDisplayMonitor  *monitor,
                                                              gboolean           underscanning);
+
+/* Bit mask of (1 << mode); 0 if the monitor can't vary its refresh rate */
+guint             cc_display_monitor_get_supported_vrr_modes (CcDisplayMonitor *monitor);
+guint             cc_display_monitor_get_vrr_mode           (CcDisplayMonitor  *monitor);
+void              cc_display_monitor_set_vrr_mode           (CcDisplayMonitor  *monitor,
+                                                             guint              mode);
 
 CcDisplayMode*    cc_display_monitor_get_mode               (CcDisplayMonitor  *monitor);
 void              cc_display_monitor_get_geometry           (CcDisplayMonitor  *monitor,

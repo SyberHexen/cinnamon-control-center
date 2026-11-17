@@ -355,6 +355,25 @@ cc_display_monitor_set_underscanning (CcDisplayMonitor *self,
   return CC_DISPLAY_MONITOR_GET_CLASS (self)->set_underscanning (self, underscanning);
 }
 
+guint
+cc_display_monitor_get_supported_vrr_modes (CcDisplayMonitor *self)
+{
+  return CC_DISPLAY_MONITOR_GET_CLASS (self)->get_supported_vrr_modes (self);
+}
+
+guint
+cc_display_monitor_get_vrr_mode (CcDisplayMonitor *self)
+{
+  return CC_DISPLAY_MONITOR_GET_CLASS (self)->get_vrr_mode (self);
+}
+
+void
+cc_display_monitor_set_vrr_mode (CcDisplayMonitor *self,
+                                 guint             mode)
+{
+  CC_DISPLAY_MONITOR_GET_CLASS (self)->set_vrr_mode (self, mode);
+}
+
 void
 cc_display_monitor_set_mode (CcDisplayMonitor *self, CcDisplayMode *m)
 {

@@ -300,6 +300,10 @@ struct _CcDisplayMonitorDBus
   int height_mm;
   gboolean builtin;
   CcDisplayMonitorUnderscanning underscanning;
+  /* Variable refresh rate: mode and mask of (1 << mode) */
+  guint32 supported_vrr_modes;
+  guint32 vrr_mode;
+  gboolean vrr_mode_changed;
   int max_width;
   int max_height;
   int logical_index;
@@ -711,6 +715,32 @@ cc_display_monitor_dbus_set_scale (CcDisplayMonitor *pself,
     }
 }
 
+static guint
+cc_display_monitor_dbus_get_supported_vrr_modes (CcDisplayMonitor *pself)
+{
+  return CC_DISPLAY_MONITOR_DBUS (pself)->supported_vrr_modes;
+}
+
+static guint
+cc_display_monitor_dbus_get_vrr_mode (CcDisplayMonitor *pself)
+{
+  return CC_DISPLAY_MONITOR_DBUS (pself)->vrr_mode;
+}
+
+static void
+cc_display_monitor_dbus_set_vrr_mode (CcDisplayMonitor *pself,
+                                      guint             mode)
+{
+  CcDisplayMonitorDBus *self = CC_DISPLAY_MONITOR_DBUS (pself);
+
+  if (mode >= 32 || !(self->supported_vrr_modes & (1u << mode)) ||
+      self->vrr_mode == mode)
+    return;
+
+  self->vrr_mode = mode;
+  self->vrr_mode_changed = TRUE;
+}
+
 static void
 cc_display_monitor_dbus_init (CcDisplayMonitorDBus *self)
 {
@@ -770,6 +800,9 @@ cc_display_monitor_dbus_class_init (CcDisplayMonitorDBusClass *klass)
   parent_class->supports_underscanning = cc_display_monitor_dbus_supports_underscanning;
   parent_class->get_underscanning = cc_display_monitor_dbus_get_underscanning;
   parent_class->set_underscanning = cc_display_monitor_dbus_set_underscanning;
+  parent_class->get_supported_vrr_modes = cc_display_monitor_dbus_get_supported_vrr_modes;
+  parent_class->get_vrr_mode = cc_display_monitor_dbus_get_vrr_mode;
+  parent_class->set_vrr_mode = cc_display_monitor_dbus_set_vrr_mode;
   parent_class->set_mode = cc_display_monitor_dbus_set_mode;
   parent_class->set_position = cc_display_monitor_dbus_set_position;
   parent_class->get_scale = cc_display_monitor_dbus_get_scale;
@@ -843,6 +876,22 @@ cc_display_monitor_dbus_new (GVariant *variant,
             self->underscanning = UNDERSCANNING_ENABLED;
           else
             self->underscanning = UNDERSCANNING_DISABLED;
+        }
+      else if (g_str_equal (s, "supported-vrr-modes") &&
+               g_variant_is_of_type (v, G_VARIANT_TYPE ("au")))
+        {
+          g_autoptr(GVariantIter) values = NULL;
+          guint32 value;
+
+          g_variant_get (v, "au", &values);
+          while (g_variant_iter_next (values, "u", &value))
+            if (value < 32)
+              self->supported_vrr_modes |= 1u << value;
+        }
+      else if (g_str_equal (s, "vrr-mode") &&
+               g_variant_is_of_type (v, G_VARIANT_TYPE_UINT32))
+        {
+          self->vrr_mode = g_variant_get_uint32 (v);
         }
       else if (g_str_equal (s, "max-screen-size"))
         {
@@ -943,6 +992,10 @@ build_monitors_variant (GHashTable *monitors)
                              "underscanning",
                              g_variant_new_boolean (monitor->underscanning == UNDERSCANNING_ENABLED));
 
+      if (monitor->vrr_mode_changed)
+        g_variant_builder_add (&props_builder, "{sv}",
+                               "vrr-mode",
+                               g_variant_new_uint32 (monitor->vrr_mode));
       mode_dbus = CC_DISPLAY_MODE_DBUS (monitor->current_mode);
       g_variant_builder_add (&builder, "(ss@*)",
                              monitor->connector_name,
@@ -1082,6 +1135,9 @@ cc_display_config_dbus_equal (CcDisplayConfig *pself,
         return FALSE;
 
       if (m1->underscanning != m2->underscanning)
+        return FALSE;
+
+      if (m1->vrr_mode != m2->vrr_mode)
         return FALSE;
 
       if (!cc_display_logical_monitor_equal (m1->logical_monitor, m2->logical_monitor))
