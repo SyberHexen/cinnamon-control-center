@@ -53,6 +53,8 @@ struct _CcDisplaySettings
   GtkWidget        *scale_label;
   GtkWidget        *underscanning_row;
   GtkWidget        *underscanning_switch;
+  GtkWidget        *vrr_row;
+  GtkWidget        *vrr_combo;
   GtkWidget        *color_row;
   GtkWidget        *color_range_combo;
   GtkWidget        *color_advanced_button;
@@ -236,6 +238,7 @@ sort_modes_by_area_desc (CcDisplayMode *a, CcDisplayMode *b)
 
 static void update_hdr_advanced (CcDisplaySettings *self);
 static void update_color (CcDisplaySettings *self);
+static void update_vrr (CcDisplaySettings *self);
 
 static gboolean
 cc_display_settings_rebuild_ui (CcDisplaySettings *self)
@@ -259,6 +262,7 @@ cc_display_settings_rebuild_ui (CcDisplaySettings *self)
       gtk_widget_set_sensitive (self->underscanning_row, FALSE);
       gtk_widget_set_sensitive (self->hdr_row, FALSE);
       gtk_widget_set_sensitive (self->color_row, FALSE);
+      gtk_widget_set_sensitive (self->vrr_row, FALSE);
 
       return G_SOURCE_REMOVE;
     }
@@ -496,6 +500,7 @@ cc_display_settings_rebuild_ui (CcDisplaySettings *self)
 
   self->updating = TRUE;
   update_color (self);
+  update_vrr (self);
   self->updating = FALSE;
 
   /* HDR, for monitors that can show it */
@@ -748,6 +753,64 @@ update_color (CcDisplaySettings *self)
 
   gtk_widget_set_visible (self->color_row, TRUE);
   gtk_widget_set_sensitive (self->color_row, TRUE);
+}
+
+/* Variable refresh rate, for monitors that can vary it */
+static void
+update_vrr (CcDisplaySettings *self)
+{
+  static const struct
+  {
+    guint mode;
+    const gchar *id;
+    const gchar *name;
+  } vrr_names[] = {
+    { CC_DISPLAY_VRR_OFF, "0", N_("Off") },
+    { CC_DISPLAY_VRR_AUTOMATIC, "1", N_("Automatic") },
+    { CC_DISPLAY_VRR_ALWAYS, "2", N_("Always") },
+  };
+  guint supported = cc_display_monitor_get_supported_vrr_modes (self->selected_output);
+  guint current = cc_display_monitor_get_vrr_mode (self->selected_output);
+  gsize i;
+
+  gtk_combo_box_text_remove_all (GTK_COMBO_BOX_TEXT (self->vrr_combo));
+  if (!(supported & ~(1u << CC_DISPLAY_VRR_OFF)))
+    {
+      gtk_widget_set_visible (self->vrr_row, FALSE);
+      return;
+    }
+
+  for (i = 0; i < G_N_ELEMENTS (vrr_names); i++)
+    {
+      if (supported & (1u << vrr_names[i].mode))
+        gtk_combo_box_text_append (GTK_COMBO_BOX_TEXT (self->vrr_combo),
+                                   vrr_names[i].id, _(vrr_names[i].name));
+      if (vrr_names[i].mode == current)
+        gtk_combo_box_set_active_id (GTK_COMBO_BOX (self->vrr_combo),
+                                     vrr_names[i].id);
+    }
+
+  gtk_widget_set_visible (self->vrr_row, TRUE);
+  gtk_widget_set_sensitive (self->vrr_row, TRUE);
+}
+
+static void
+on_vrr_combo_changed_cb (GtkComboBox       *combo,
+                         CcDisplaySettings *self)
+{
+  const gchar *id;
+
+  if (self->updating || !self->selected_output)
+    return;
+
+  id = gtk_combo_box_get_active_id (combo);
+  if (id == NULL)
+    return;
+
+  cc_display_monitor_set_vrr_mode (self->selected_output,
+                                   (guint) g_ascii_strtoull (id, NULL, 10));
+
+  g_signal_emit_by_name (G_OBJECT (self), "updated", self->selected_output);
 }
 
 static void
@@ -1178,6 +1241,8 @@ cc_display_settings_init (CcDisplaySettings *self)
   self->scale_label = WID ("scale_label");
   self->underscanning_row = WID ("underscanning_row");
   self->underscanning_switch = WID ("underscanning_switch");
+  self->vrr_row = WID ("vrr_row");
+  self->vrr_combo = WID ("vrr_combo");
   self->color_row = WID ("color_row");
   self->color_range_combo = WID ("color_range_combo");
   self->color_advanced_button = WID ("color_advanced_button");
@@ -1194,6 +1259,7 @@ cc_display_settings_init (CcDisplaySettings *self)
   gtk_builder_add_callback_symbol (self->builder, "on_underscanning_switch_active_changed_cb", G_CALLBACK (on_underscanning_switch_active_changed_cb));
   gtk_builder_add_callback_symbol (self->builder, "on_hdr_combo_changed_cb", G_CALLBACK (on_hdr_combo_changed_cb));
   gtk_builder_add_callback_symbol (self->builder, "on_color_range_combo_changed_cb", G_CALLBACK (on_color_range_combo_changed_cb));
+  gtk_builder_add_callback_symbol (self->builder, "on_vrr_combo_changed_cb", G_CALLBACK (on_vrr_combo_changed_cb));
 
   GtkCellRenderer *renderer;
 

@@ -414,6 +414,25 @@ cc_display_monitor_set_color_format (CcDisplayMonitor *self,
 }
 
 guint
+cc_display_monitor_get_supported_vrr_modes (CcDisplayMonitor *self)
+{
+  return CC_DISPLAY_MONITOR_GET_CLASS (self)->get_supported_vrr_modes (self);
+}
+
+guint
+cc_display_monitor_get_vrr_mode (CcDisplayMonitor *self)
+{
+  return CC_DISPLAY_MONITOR_GET_CLASS (self)->get_vrr_mode (self);
+}
+
+void
+cc_display_monitor_set_vrr_mode (CcDisplayMonitor *self,
+                                 guint             mode)
+{
+  CC_DISPLAY_MONITOR_GET_CLASS (self)->set_vrr_mode (self, mode);
+}
+
+guint
 cc_display_monitor_get_sdr_white_level (CcDisplayMonitor *self)
 {
   return CC_DISPLAY_MONITOR_GET_CLASS (self)->get_sdr_white_level (self);

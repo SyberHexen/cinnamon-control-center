@@ -309,6 +309,11 @@ struct _CcDisplayMonitorDBus
   guint32 color_format;
   gboolean color_format_changed;
 
+  /* Variable refresh rate: mode and mask of (1 << mode) */
+  guint32 supported_vrr_modes;
+  guint32 vrr_mode;
+  gboolean vrr_mode_changed;
+
   /* Muffin's color modes: 0 SDR, 1 HDR10 (BT.2100) */
   guint32 supported_color_modes;
   guint32 color_mode;
@@ -823,6 +828,32 @@ cc_display_monitor_dbus_set_color_format (CcDisplayMonitor *pself,
   self->color_format_changed = TRUE;
 }
 
+static guint
+cc_display_monitor_dbus_get_supported_vrr_modes (CcDisplayMonitor *pself)
+{
+  return CC_DISPLAY_MONITOR_DBUS (pself)->supported_vrr_modes;
+}
+
+static guint
+cc_display_monitor_dbus_get_vrr_mode (CcDisplayMonitor *pself)
+{
+  return CC_DISPLAY_MONITOR_DBUS (pself)->vrr_mode;
+}
+
+static void
+cc_display_monitor_dbus_set_vrr_mode (CcDisplayMonitor *pself,
+                                      guint             mode)
+{
+  CcDisplayMonitorDBus *self = CC_DISPLAY_MONITOR_DBUS (pself);
+
+  if (mode >= 32 || !(self->supported_vrr_modes & (1u << mode)) ||
+      self->vrr_mode == mode)
+    return;
+
+  self->vrr_mode = mode;
+  self->vrr_mode_changed = TRUE;
+}
+
 /* Muffin's limits (meta-color-transform.h) */
 #define MIN_SDR_WHITE_LEVEL 80
 #define MAX_SDR_WHITE_LEVEL 1000
@@ -969,6 +1000,9 @@ cc_display_monitor_dbus_class_init (CcDisplayMonitorDBusClass *klass)
   parent_class->get_supported_color_formats = cc_display_monitor_dbus_get_supported_color_formats;
   parent_class->get_color_format = cc_display_monitor_dbus_get_color_format;
   parent_class->set_color_format = cc_display_monitor_dbus_set_color_format;
+  parent_class->get_supported_vrr_modes = cc_display_monitor_dbus_get_supported_vrr_modes;
+  parent_class->get_vrr_mode = cc_display_monitor_dbus_get_vrr_mode;
+  parent_class->set_vrr_mode = cc_display_monitor_dbus_set_vrr_mode;
   parent_class->get_sdr_white_level = cc_display_monitor_dbus_get_sdr_white_level;
   parent_class->set_sdr_white_level = cc_display_monitor_dbus_set_sdr_white_level;
   parent_class->supports_hdr_peak = cc_display_monitor_dbus_supports_hdr_peak;
@@ -1048,6 +1082,22 @@ cc_display_monitor_dbus_new (GVariant *variant,
             self->underscanning = UNDERSCANNING_ENABLED;
           else
             self->underscanning = UNDERSCANNING_DISABLED;
+        }
+      else if (g_str_equal (s, "supported-vrr-modes") &&
+               g_variant_is_of_type (v, G_VARIANT_TYPE ("au")))
+        {
+          g_autoptr(GVariantIter) values = NULL;
+          guint32 value;
+
+          g_variant_get (v, "au", &values);
+          while (g_variant_iter_next (values, "u", &value))
+            if (value < 32)
+              self->supported_vrr_modes |= 1u << value;
+        }
+      else if (g_str_equal (s, "vrr-mode") &&
+               g_variant_is_of_type (v, G_VARIANT_TYPE_UINT32))
+        {
+          self->vrr_mode = g_variant_get_uint32 (v);
         }
       else if ((g_str_equal (s, "supported-rgb-ranges") ||
                 g_str_equal (s, "supported-color-formats")) &&
@@ -1233,6 +1283,10 @@ build_monitors_variant (GHashTable *monitors)
                                    "hdr-auto-switch",
                                    g_variant_new_boolean (monitor->hdr != CC_DISPLAY_HDR_OFF));
         }
+      if (monitor->vrr_mode_changed)
+        g_variant_builder_add (&props_builder, "{sv}",
+                               "vrr-mode",
+                               g_variant_new_uint32 (monitor->vrr_mode));
       if (monitor->rgb_range_changed)
         g_variant_builder_add (&props_builder, "{sv}",
                                "rgb-range",
@@ -1391,7 +1445,8 @@ cc_display_config_dbus_equal (CcDisplayConfig *pself,
       if (m1->underscanning != m2->underscanning)
         return FALSE;
 
-      if (m1->rgb_range != m2->rgb_range ||
+      if (m1->vrr_mode != m2->vrr_mode ||
+          m1->rgb_range != m2->rgb_range ||
           m1->color_format != m2->color_format ||
           m1->hdr != m2->hdr ||
           m1->sdr_white_level != m2->sdr_white_level ||

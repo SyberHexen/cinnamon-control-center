@@ -81,6 +81,11 @@ typedef enum _CcDisplayRotation
 #define CC_DISPLAY_COLOR_FORMAT_YCBCR422 4
 #define CC_DISPLAY_COLOR_FORMAT_YCBCR420 5
 
+/* Variable refresh rate: Muffin's "vrr-mode" values */
+#define CC_DISPLAY_VRR_OFF 0
+#define CC_DISPLAY_VRR_AUTOMATIC 1
+#define CC_DISPLAY_VRR_ALWAYS 2
+
 /* What a monitor that can show HDR does: SDR only, HDR when an application
  * shows HDR content full screen, or HDR always */
 typedef enum _CcDisplayHdr
@@ -156,6 +161,10 @@ struct _CcDisplayMonitorClass
   guint             (*get_color_format)       (CcDisplayMonitor  *self);
   void              (*set_color_format)       (CcDisplayMonitor  *self,
                                                guint              format);
+  guint             (*get_supported_vrr_modes) (CcDisplayMonitor *self);
+  guint             (*get_vrr_mode)           (CcDisplayMonitor  *self);
+  void              (*set_vrr_mode)           (CcDisplayMonitor  *self,
+                                               guint              mode);
   guint             (*get_sdr_white_level)    (CcDisplayMonitor  *self);
   void              (*set_sdr_white_level)    (CcDisplayMonitor  *self,
                                                guint              level);
@@ -276,6 +285,12 @@ guint             cc_display_monitor_get_supported_color_formats (CcDisplayMonit
 guint             cc_display_monitor_get_color_format       (CcDisplayMonitor  *monitor);
 void              cc_display_monitor_set_color_format       (CcDisplayMonitor  *monitor,
                                                              guint              format);
+
+/* Bit mask of (1 << mode); 0 if the monitor can't vary its refresh rate */
+guint             cc_display_monitor_get_supported_vrr_modes (CcDisplayMonitor *monitor);
+guint             cc_display_monitor_get_vrr_mode           (CcDisplayMonitor  *monitor);
+void              cc_display_monitor_set_vrr_mode           (CcDisplayMonitor  *monitor,
+                                                             guint              mode);
 
 /* SDR content's white in HDR, in cd/m²; 0 if the compositor has no setting */
 guint             cc_display_monitor_get_sdr_white_level    (CcDisplayMonitor  *monitor);
